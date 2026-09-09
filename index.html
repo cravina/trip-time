@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>TripFlow - Smart Travel Planner & Itinerary Map</title>
+  
+  <!-- PWA meta tags -->
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TripFlow" />
+  <meta name="description" content="Visual itinerary planner with interactive maps, real driving road paths, hiking trails, and synced POI timeline cards." />
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            trail: {
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          },
+          animation: {
+            'bounce-short': 'bounceShort 0.5s ease-in-out 2',
+            'pulse-ring': 'pulseRing 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite',
+          },
+          keyframes: {
+            bounceShort: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-8px)' },
+            },
+            pulseRing: {
+              '0%': { transform: 'scale(0.8)', opacity: '0.8' },
+              '70%': { transform: 'scale(2.2)', opacity: '0' },
+              '100%': { transform: 'scale(2.4)', opacity: '0' },
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    * {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    h1, h2, h3, .font-heading {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .leaflet-control-attribution {
+      font-size: 8px !important;
+      background: rgba(255, 255, 255, 0.7) !important;
+      backdrop-filter: blur(4px);
+      border-radius: 6px;
+      margin: 4px !important;
+      padding: 1px 5px !important;
+    }
+    .leaflet-control-zoom {
+      border: none !important;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+      border-radius: 14px !important;
+      overflow: hidden;
+    }
+    .leaflet-control-zoom a {
+      background: #ffffff !important;
+      color: #1e293b !important;
+      border-bottom: 1px solid #f1f5f9 !important;
+      width: 34px !important;
+      height: 34px !important;
+      line-height: 34px !important;
+    }
+    .poi-pin {
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .poi-pin.active-pin {
+      transform: scale(1.25) translateY(-6px);
+      z-index: 9999 !important;
+    }
+    /* Custom polyline tooltip */
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2) !important;
+      padding: 2px !important;
+    }
+    .leaflet-popup-content {
+      margin: 10px 14px !important;
+      font-size: 12px !important;
+      line-height: 1.4 !important;
+    }
+  </style>
+</head>
+
+<body class="h-full w-full bg-slate-950 text-slate-900 antialiased overflow-hidden select-none flex justify-center items-center">
+  
+  <!-- Mobile Container Wrapper: Responsive viewport that scales to full mobile screen -->
+  <div id="app" class="relative w-full h-full max-w-md md:max-w-lg md:h-[94vh] md:max-h-[920px] md:rounded-[40px] md:shadow-2xl md:ring-8 md:ring-slate-800/60 bg-white overflow-hidden flex flex-col">
+    
+    <header class="relative z-30 bg-white/95 backdrop-blur-md border-b border-slate-100 pt-3 pb-2 px-4 shadow-sm transition-all">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center space-x-2.5 overflow-hidden">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </div>
+          <div class="min-w-0 cursor-pointer" onclick="openTripSelectorModal()">
+            <div class="flex items-center space-x-1">
+              <h1 id="tripTitleDisplay" class="font-heading font-bold text-base text-slate-900 truncate leading-tight">Colorado Grand Loop</h1>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+            <p id="tripDatesDisplay" class="text-xs text-slate-500 font-medium">Summer Road Trip • 5 Days</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-1.5 flex-shrink-0">
+          <button onclick="openAddPoiModal()" class="flex items-center space-x-1 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-md shadow-brand-600/30 transition-transform" aria-label="Add Point of Interest">
+            <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>Add POI</span>
+          </button>
+          
+          <button onclick="openTripSelectorModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition" title="Switch Trips">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <nav id="daysTabContainer" class="flex space-x-2 mt-2.5 overflow-x-auto no-scrollbar py-0.5" aria-label="Trip Days">
+        <!-- Injected via JavaScript dynamically -->
+      </nav>
+    </header>
+
+    <main class="relative flex-1 w-full bg-slate-100 overflow-hidden">
+      <!-- Leaflet Map Container -->
+      <div id="map" class="w-full h-full z-10" role="region" aria-label="Interactive Trip Route Map"></div>
+
+      <!-- Floating Map Utilities: Recenter Bounds & Map Style Toggle -->
+      <div class="absolute top-3 right-3 z-20 flex flex-col space-y-2">
+        <button onclick="fitMapToCurrentDayBounds()" class="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-md shadow-md shadow-slate-900/10 flex items-center justify-center text-slate-700 hover:text-brand-600 hover:bg-white active:scale-90 transition" title="Fit all POIs in view">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        </button>
+
+        <button onclick="toggleMapTileTheme()" class="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-md shadow-md shadow-slate-900/10 flex items-center justify-center text-slate-700 hover:text-brand-600 hover:bg-white active:scale-90 transition" title="Toggle Map Style">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        </button>
+      </div>
+
+      <!-- Floating Day Route Summary Chip with dynamic path calculation indicator -->
+      <div id="dayStatsBadge" class="absolute top-3 left-3 z-20 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-md text-xs font-semibold text-slate-700 border border-slate-200/60 flex flex-col space-y-1 transition-opacity">
+        <div class="flex items-center space-x-1.5">
+          <span id="routeStatusDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="dayStatsText">4 stops • Calculating path...</span>
+        </div>
+        <!-- Route Mode Legend -->
+        <div class="flex items-center space-x-2 text-[10px] text-slate-500 font-medium pt-0.5 border-t border-slate-100">
+          <span class="flex items-center space-x-1 text-brand-600 font-semibold"><span class="w-2.5 h-1 bg-brand-600 rounded-full inline-block"></span><span>Drive</span></span>
+          <span class="flex items-center space-x-1 text-emerald-600 font-semibold"><span class="w-2.5 h-1 bg-emerald-500 border-b border-dashed border-emerald-700 rounded-full inline-block"></span><span>Hike</span></span>
+          <span class="flex items-center space-x-1 text-slate-400"><span class="w-2.5 h-0.5 border-b border-dashed border-slate-400 inline-block"></span><span>Direct</span></span>
+        </div>
+      </div>
+
+      <!-- Quick Instruction Hint (fades out automatically) -->
+      <div id="interactionHint" class="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-slate-900/85 backdrop-blur-md text-white text-[11px] font-medium px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none transition-all duration-700 opacity-90 text-center whitespace-nowrap">
+        Tap marker or card to sync & open insights
+      </div>
+    </main>
+
+    <footer class="relative z-30 bg-gradient-to-t from-slate-950 via-slate-900/85 to-transparent pt-3 pb-4 px-3 pointer-events-none">
+      <div class="flex items-center justify-between mb-1.5 px-2 pointer-events-auto">
+        <span class="text-[11px] font-bold tracking-wider uppercase text-white/90 drop-shadow-sm flex items-center space-x-1">
+          <svg class="w-3.5 h-3.5 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span>Daily Timeline</span>
+        </span>
+        <span id="carouselCounter" class="text-[11px] font-medium text-white/80 bg-black/40 px-2.5 py-0.5 rounded-full backdrop-blur-sm">
+          1 of 4
+        </span>
+      </div>
+
+      <!-- Horizontal Scrollable Cards Container -->
+      <div id="cardsScrollContainer" class="flex space-x-3 overflow-x-auto no-scrollbar snap-x snap-mandatory py-1 px-1 pointer-events-auto scroll-smooth">
+        <!-- Cards injected dynamically -->
+      </div>
+    </footer>
+
+    <div id="poiInsightModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none duration-300 flex items-end justify-center">
+      <div id="poiInsightSheet" class="w-full max-w-md md:max-w-lg bg-white rounded-t-[32px] p-5 shadow-2xl transform translate-y-full transition-transform duration-300 max-h-[85vh] overflow-y-auto no-scrollbar">
+        <!-- Grabber bar -->
+        <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 cursor-pointer" onclick="closePoiInsightModal()"></div>
+
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
+              <span id="insightCategoryBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-50 text-brand-600 border border-brand-200">
+                Sightseeing
+              </span>
+              <span id="insightTimeBadge" class="text-xs text-slate-500 font-medium flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="insightTime">10:00 AM</span>
+              </span>
+              <!-- Travel Mode Pill -->
+              <span id="insightRouteModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center space-x-1 cursor-pointer hover:opacity-80 transition" onclick="cycleActivePoiRouteMode()" title="Tap to change route mode">
+                <!-- Mode Icon + Label dynamically injected -->
+              </span>
+            </div>
+            <h2 id="insightTitle" class="font-heading text-xl font-extrabold text-slate-900 leading-tight">Sagrada Família</h2>
+          </div>
+          <button onclick="closePoiInsightModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 active:scale-95 transition" aria-label="Close insight sheet">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Image Preview -->
+        <div id="insightImageWrapper" class="relative w-full h-40 rounded-2xl overflow-hidden mb-4 bg-slate-100 shadow-inner">
+          <img id="insightImage" src="" alt="POI visual" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x400/4f46e5/ffffff?text=Destination+View'" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+          <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-end text-white text-xs">
+            <span id="insightDayLabel" class="font-semibold px-2 py-0.5 bg-black/40 backdrop-blur-md rounded-md">Day 1 • Stop #1</span>
+            <span id="insightRating" class="font-bold flex items-center text-amber-300">
+              ★ 4.9 <span class="text-white/80 font-normal ml-1">(2.1k reviews)</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Metrics Grid (Duration, Budget, Best Time) -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Duration</span>
+            <span id="insightDuration" class="font-semibold text-slate-800 text-sm">2.0 hrs</span>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Est. Cost</span>
+            <span id="insightCost" class="font-semibold text-slate-800 text-sm">€26 / person</span>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Best Time</span>
+            <span id="insightBestTime" class="font-semibold text-slate-800 text-sm">Morning</span>
+          </div>
+        </div>
+
+        <!-- Travel Leg Details Box -->
+        <div id="insightLegInfoCard" class="bg-slate-50 rounded-xl p-3 border border-slate-200/70 mb-4 flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div id="insightLegIcon" class="w-8 h-8 rounded-lg flex items-center justify-center text-base bg-brand-100 text-brand-700">
+              🚗
+            </div>
+            <div>
+              <p class="text-xs font-bold text-slate-800" id="insightLegTitle">Travel from previous stop</p>
+              <p class="text-[11px] text-slate-500 font-medium" id="insightLegDesc">Road routing active</p>
+            </div>
+          </div>
+          <button onclick="cycleActivePoiRouteMode()" class="text-[11px] font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg border border-brand-200 transition">
+            Change Mode
+          </button>
+        </div>
+
+        <!-- POI Description & Notes -->
+        <div class="space-y-3 mb-5">
+          <div>
+            <h3 class="text-xs uppercase font-bold text-slate-400 tracking-wider mb-1">Description & Local Tips</h3>
+            <p id="insightDescription" class="text-sm text-slate-600 leading-relaxed">
+              Detailed description goes here.
+            </p>
+          </div>
+
+          <!-- Tags -->
+          <div id="insightTagsContainer" class="flex flex-wrap gap-1.5 pt-1">
+            <!-- tags injected -->
+          </div>
+        </div>
+
+        <!-- Action Row -->
+        <div class="flex items-center space-x-2 pt-2 border-t border-slate-100">
+          <button id="insightNavigateBtn" class="flex-1 bg-brand-600 hover:bg-brand-700 active:scale-98 text-white py-3 px-4 rounded-xl font-bold text-sm shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
+            <span>Focus on Map</span>
+          </button>
+          <button id="insightDeleteBtn" class="w-11 h-11 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition active:scale-95" title="Delete POI">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="poiModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none duration-300 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto no-scrollbar">
+        <div class="flex items-center justify-between mb-3">
+          <h2 id="poiModalTitle" class="font-heading font-bold text-lg text-slate-900">Add New Place</h2>
+          <button onclick="closeAddPoiModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <form id="poiForm" onsubmit="handleSavePoi(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiNameInput">Place Name</label>
+            <input type="text" id="poiNameInput" required placeholder="e.g. Bear Lake Trailhead" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiDaySelect">Trip Day</label>
+              <select id="poiDaySelect" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+                <!-- Injected dynamically -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiCategorySelect">Category</label>
+              <select id="poiCategorySelect" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+                <option value="sight">🏛️ Landmark</option>
+                <option value="food">🍽️ Food & Drink</option>
+                <option value="museum">🎨 Museum</option>
+                <option value="nature" selected>🌿 Nature & Trail</option>
+                <option value="shopping">🛍️ Shopping</option>
+                <option value="hotel">🏨 Hotel</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Route Path Type / Travel Mode Selection -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiRouteModeSelect">
+              Path from Previous Stop
+            </label>
+            <select id="poiRouteModeSelect" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+              <option value="driving">🚗 Driving (Follows actual roads)</option>
+              <option value="hiking">🥾 Hiking (Follows trails & footpaths)</option>
+              <option value="straight">📐 Straight Line (Unclassified / Direct)</option>
+            </select>
+            <p class="text-[10px] text-slate-400 mt-1">If trails or roads are unreachable, it automatically falls back to a straight line.</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiTimeInput">Planned Time</label>
+              <input type="time" id="poiTimeInput" value="11:00" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiDurationInput">Duration</label>
+              <input type="text" id="poiDurationInput" placeholder="e.g. 1.5 hrs" value="1.5 hrs" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition" />
+            </div>
+          </div>
+
+          <!-- Coordinates Selection -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Location Coordinates</label>
+              <button type="button" onclick="enableMapPickMode()" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+                <span>Tap Map to Pick</span>
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="number" step="0.000001" id="poiLatInput" required placeholder="Latitude" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono" />
+              <input type="number" step="0.000001" id="poiLngInput" required placeholder="Longitude" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="poiNotesInput">Notes & Tips</label>
+            <textarea id="poiNotesInput" rows="2" placeholder="Trail pass required, packing microspikes or snacks..." class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition"></textarea>
+          </div>
+
+          <div class="pt-2 flex space-x-2">
+            <button type="button" onclick="closeAddPoiModal()" class="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs text-slate-700 transition">
+              Cancel
+            </button>
+            <button type="submit" class="flex-1 py-2.5 px-3 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md shadow-brand-600/30 transition">
+              Save Place
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="tripModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none duration-300 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl transform scale-95 transition-transform duration-200 max-h-[85vh] flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-heading font-bold text-lg text-slate-900">Your Trips</h2>
+          <button onclick="closeTripSelectorModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div id="tripListContainer" class="space-y-2 overflow-y-auto max-h-52 pr-1 mb-4 no-scrollbar">
+          <!-- Trip cards injected -->
+        </div>
+
+        <div class="border-t border-slate-100 pt-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Create New Trip</h3>
+          <form onsubmit="handleCreateNewTrip(event)" class="space-y-2">
+            <input type="text" id="newTripName" required placeholder="Trip Title (e.g. Swiss Alps Expedition)" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" id="newTripDates" required placeholder="Dates (e.g. Sep 12-18)" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <input type="number" id="newTripDays" min="1" max="14" value="4" required placeholder="Days count" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <button type="submit" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 active:scale-98 text-white rounded-xl font-bold text-xs shadow-md shadow-brand-600/30 transition">
+              + Create Trip
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Picker active notification bar -->
+    <div id="mapPickerNotification" class="absolute top-16 left-4 right-4 z-40 bg-slate-900/95 text-white px-4 py-2.5 rounded-2xl shadow-xl flex items-center justify-between text-xs font-medium backdrop-blur-md transform -translate-y-28 transition-transform duration-300">
+      <div class="flex items-center space-x-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-brand-400 animate-ping"></span>
+        <span>Tap any spot on the map to set location</span>
+      </div>
+      <button onclick="cancelMapPickMode()" class="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-[11px] font-bold">
+        Cancel
+      </button>
+    </div>
+
+    <!-- In-App Toast Notification Pill -->
+    <div id="appToast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full text-xs font-medium shadow-2xl backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300 flex items-center space-x-2">
+      <span id="toastIcon">✨</span>
+      <span id="toastMessage">Action completed</span>
+    </div>
+
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'tripflow_colorado_trip_v3';
+
+    // Curated high-fidelity full Colorado itinerary with explicit route types
+    const DEFAULT_DATA = {
+      activeTripId: 'trip_colorado',
+      trips: [
+        {
+          id: 'trip_colorado',
+          title: 'Colorado Grand Loop',
+          destination: 'Colorado, USA',
+          dates: 'Jul 15 - 19',
+          totalDays: 5,
+          center: [39.7392, -104.9903],
+          zoom: 12,
+          pois: [
+            // Day 1: Denver & Red Rocks Foothills
+            {
+              id: 'poi_co_1',
+              day: 1,
+              title: 'Denver Union Station',
+              category: 'food',
+              routeType: 'driving',
+              time: '08:30 AM',
+              duration: '1.5 hrs',
+              cost: '$20',
+              bestTime: 'Morning breakfast',
+              lat: 39.7531,
+              lng: -104.9989,
+              rating: '4.8',
+              reviewCount: '5.2k',
+              image: 'https://images.unsplash.com/photo-1578637387939-43c525550085?auto=format&fit=crop&w=600&q=80',
+              description: 'Restored 1914 Beaux-Arts transit hall filled with artisanal cafes, local roasters, and lively brunch at Snooze.',
+              tags: ['Historic Landmark', 'Breakfast Hub', 'Downtown']
+            },
+            {
+              id: 'poi_co_2',
+              day: 1,
+              title: 'Denver Art Museum',
+              category: 'museum',
+              routeType: 'driving',
+              time: '11:00 AM',
+              duration: '2.5 hrs',
+              cost: '$19',
+              bestTime: 'Midday',
+              lat: 39.7371,
+              lng: -104.9892,
+              rating: '4.7',
+              reviewCount: '3.1k',
+              image: 'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=600&q=80',
+              description: 'Stunning Daniel Libeskind-designed museum showcasing world-class Indigenous Arts of North America collections.',
+              tags: ['Modern Architecture', 'Art & Culture', 'Golden Triangle']
+            },
+            {
+              id: 'poi_co_3',
+              day: 1,
+              title: 'Larimer Square',
+              category: 'shopping',
+              routeType: 'driving',
+              time: '02:30 PM',
+              duration: '1.5 hrs',
+              cost: 'Free',
+              bestTime: 'Afternoon',
+              lat: 39.7497,
+              lng: -104.9990,
+              rating: '4.6',
+              reviewCount: '2.8k',
+              image: 'https://images.unsplash.com/photo-1518684079-3c830dcef090?auto=format&fit=crop&w=600&q=80',
+              description: 'Denver’s oldest historic urban block with canopy string lights, Victorian brick facades, and indie craft boutiques.',
+              tags: ['Historic Block', 'Local Dining', 'Stroll']
+            },
+            {
+              id: 'poi_co_4',
+              day: 1,
+              title: 'Red Rocks Amphitheatre',
+              category: 'sight',
+              routeType: 'driving',
+              time: '05:30 PM',
+              duration: '2.5 hrs',
+              cost: 'Free',
+              bestTime: 'Sunset Golden Hour',
+              lat: 39.6654,
+              lng: -105.2057,
+              rating: '4.9',
+              reviewCount: '12.4k',
+              image: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80',
+              description: 'Legendary natural red sandstone acoustic amphitheater with panoramic vistas across the Denver plains.',
+              tags: ['Iconic Venue', 'Hiking Trails', 'Must-See Sunset']
+            },
+
+            // Day 2: Rocky Mountain National Park & Estes Park
+            {
+              id: 'poi_co_5',
+              day: 2,
+              title: 'The Stanley Hotel',
+              category: 'hotel',
+              routeType: 'driving',
+              time: '08:30 AM',
+              duration: '1.5 hrs',
+              cost: 'Free entry',
+              bestTime: 'Morning',
+              lat: 40.3800,
+              lng: -105.5186,
+              rating: '4.6',
+              reviewCount: '4.9k',
+              image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80',
+              description: 'Historic colonial revival hotel overlooking Estes Park; famous inspiration for Stephen King\'s The Shining.',
+              tags: ['Historic Hotel', 'Mountain Views', 'Ghost Lore']
+            },
+            {
+              id: 'poi_co_6',
+              day: 2,
+              title: 'Bear Lake Trailhead',
+              category: 'nature',
+              routeType: 'driving',
+              time: '11:00 AM',
+              duration: '3.0 hrs',
+              cost: '$30 Pass',
+              bestTime: 'Midday (Timed Entry)',
+              lat: 40.3132,
+              lng: -105.6482,
+              rating: '4.9',
+              reviewCount: '8.7k',
+              image: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=600&q=80',
+              description: 'Crystal alpine lake reflecting Hallett Peak. Starting point for the iconic Dream and Emerald Lake hike.',
+              tags: ['Alpine Lake', 'Hiking', 'RMNP Jewel']
+            },
+            {
+              id: 'poi_co_6b',
+              day: 2,
+              title: 'Emerald Lake Trail Summit',
+              category: 'nature',
+              routeType: 'hiking', // Trail path between Bear Lake and Emerald Lake
+              time: '01:30 PM',
+              duration: '2.0 hrs',
+              cost: 'Included in pass',
+              bestTime: 'Early Afternoon',
+              lat: 40.3101,
+              lng: -105.6668,
+              rating: '5.0',
+              reviewCount: '6.4k',
+              image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80',
+              description: 'Rugged high alpine trail hugging Hallett Peak and Tyndall Glacier waters. Lush pine scented ascent.',
+              tags: ['Alpine Trail', 'Glacier Bowl', 'Day Hike']
+            },
+            {
+              id: 'poi_co_7',
+              day: 2,
+              title: 'Trail Ridge Road Overlook',
+              category: 'sight',
+              routeType: 'driving',
+              time: '04:00 PM',
+              duration: '2.0 hrs',
+              cost: 'Included in pass',
+              bestTime: 'Afternoon',
+              lat: 40.4411,
+              lng: -105.7539,
+              rating: '4.9',
+              reviewCount: '3.9k',
+              image: 'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=600&q=80',
+              description: 'Highest continuous paved highway in North America (12,183 ft). Dramatic tundra vistas and frequent elk sightings.',
+              tags: ['Scenic Byway', 'Alpine Tundra', 'Wildlife Spotting']
+            },
+
+            // Day 3: Continental Divide & High Rockies
+            {
+              id: 'poi_co_8',
+              day: 3,
+              title: 'Dillon Reservoir Scenic Point',
+              category: 'nature',
+              routeType: 'driving',
+              time: '09:30 AM',
+              duration: '1.5 hrs',
+              cost: 'Free',
+              bestTime: 'Morning',
+              lat: 39.6267,
+              lng: -106.0505,
+              rating: '4.8',
+              reviewCount: '1.7k',
+              image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80',
+              description: 'Cobalt mountain reservoir nestled at 9,000 ft elevation with 360-degree views of the jagged Tenmile Range.',
+              tags: ['Scenic Overlook', 'Sailing & Kayaks', 'Photo Spot']
+            },
+            {
+              id: 'poi_co_9',
+              day: 3,
+              title: 'Breckenridge Historic Main St',
+              category: 'shopping',
+              routeType: 'driving',
+              time: '12:00 PM',
+              duration: '2.5 hrs',
+              cost: 'Varies',
+              bestTime: 'Lunch time',
+              lat: 39.4817,
+              lng: -106.0384,
+              rating: '4.8',
+              reviewCount: '4.1k',
+              image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=600&q=80',
+              description: 'Charming Victorian gold-mining town packed with craft breweries, alpine gear shops, and mountain confectioneries.',
+              tags: ['Victorian Town', 'Craft Beer', 'Mountain Vibes']
+            },
+            {
+              id: 'poi_co_10',
+              day: 3,
+              title: 'Vail Village & Covered Bridge',
+              category: 'sight',
+              routeType: 'driving',
+              time: '04:00 PM',
+              duration: '2.5 hrs',
+              cost: 'Free',
+              bestTime: 'Late Afternoon',
+              lat: 39.6433,
+              lng: -106.3752,
+              rating: '4.8',
+              reviewCount: '3.6k',
+              image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=600&q=80',
+              description: 'Pedestrian European-inspired Bavarian ski hamlet featuring cobblestone streets, heated sidewalks, and Gore Creek paths.',
+              tags: ['Bavarian Architecture', 'Gore Creek', 'Alpine Village']
+            },
+
+            // Day 4: Aspen & The Maroon Bells
+            {
+              id: 'poi_co_11',
+              day: 4,
+              title: 'Independence Pass Summit',
+              category: 'sight',
+              routeType: 'driving',
+              time: '09:00 AM',
+              duration: '1.0 hr',
+              cost: 'Free',
+              bestTime: 'Morning drive',
+              lat: 39.1086,
+              lng: -106.5639,
+              rating: '4.9',
+              reviewCount: '1.9k',
+              image: 'https://images.unsplash.com/photo-1454496522488-7a8e488e8606?auto=format&fit=crop&w=600&q=80',
+              description: 'Breathtaking 12,095 ft Continental Divide crossing connecting Twin Lakes to Aspen along Top of the Rockies Scenic Byway.',
+              tags: ['Continental Divide', 'Dramatic Drive', 'High Pass']
+            },
+            {
+              id: 'poi_co_12',
+              day: 4,
+              title: 'Maroon Bells & Maroon Lake',
+              category: 'nature',
+              routeType: 'driving',
+              time: '11:00 AM',
+              duration: '2.5 hrs',
+              cost: '$16 Shuttle',
+              bestTime: 'Midday (Reservation Required)',
+              lat: 39.0985,
+              lng: -106.9407,
+              rating: '5.0',
+              reviewCount: '7.3k',
+              image: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=600&q=80',
+              description: 'The most photographed peaks in North America. Mirror reflections in Maroon Lake surrounded by golden aspen groves.',
+              tags: ['Bucket List', 'Iconic Twin Peaks', 'Alpine Mirror']
+            },
+            {
+              id: 'poi_co_12b',
+              day: 4,
+              title: 'Crater Lake Alpine Trail',
+              category: 'nature',
+              routeType: 'hiking', // Hiking trail from Maroon Lake
+              time: '01:30 PM',
+              duration: '2.0 hrs',
+              cost: 'Free',
+              bestTime: 'Early Afternoon',
+              lat: 39.0834,
+              lng: -106.9582,
+              rating: '4.9',
+              reviewCount: '3.8k',
+              image: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=600&q=80',
+              description: 'A rocky trail following glacial moraines leading up close beneath the towering volcanic faces of the Maroon Bells.',
+              tags: ['Glacial Trail', 'Wildflowers', 'Hiking']
+            },
+            {
+              id: 'poi_co_13',
+              day: 4,
+              title: 'Downtown Aspen Mall',
+              category: 'food',
+              routeType: 'driving',
+              time: '04:00 PM',
+              duration: '2.0 hrs',
+              cost: '$$$',
+              bestTime: 'Afternoon',
+              lat: 39.1866,
+              lng: -106.8184,
+              rating: '4.7',
+              reviewCount: '2.9k',
+              image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80',
+              description: 'World-renowned resort town with brick pedestrian malls, top-tier farm-to-table dining, and contemporary art galleries.',
+              tags: ['Gourmet Dining', 'Art Galleries', 'Luxury Mountain']
+            },
+            {
+              id: 'poi_co_14',
+              day: 4,
+              title: 'Glenwood Hot Springs Pool',
+              category: 'nature',
+              routeType: 'driving',
+              time: '06:30 PM',
+              duration: '2.5 hrs',
+              cost: '$35',
+              bestTime: 'Sunset Soak',
+              lat: 39.5492,
+              lng: -107.3229,
+              rating: '4.7',
+              reviewCount: '5.8k',
+              image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=600&q=80',
+              description: 'World\'s largest geothermal mineral hot springs pool; unwind after mountain hikes beneath towering canyon cliffs.',
+              tags: ['Thermal Springs', 'Mineral Soak', 'Recovery']
+            },
+
+            // Day 5: Colorado Springs & Pikes Peak
+            {
+              id: 'poi_co_15',
+              day: 5,
+              title: 'Garden of the Gods',
+              category: 'nature',
+              routeType: 'driving',
+              time: '08:30 AM',
+              duration: '2.0 hrs',
+              cost: 'Free',
+              bestTime: 'Morning light',
+              lat: 38.8784,
+              lng: -104.8698,
+              rating: '4.9',
+              reviewCount: '15.1k',
+              image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=600&q=80',
+              description: 'Towering 300-foot vertical red sandstone fins standing dramatically against a backdrop of snow-capped Pikes Peak.',
+              tags: ['National Landmark', 'Red Rocks', 'Paved Trails']
+            },
+            {
+              id: 'poi_co_15b',
+              day: 5,
+              title: 'Perkins Central Garden Trail',
+              category: 'nature',
+              routeType: 'hiking', // Trail loop inside Garden of the Gods
+              time: '10:30 AM',
+              duration: '1.5 hrs',
+              cost: 'Free',
+              bestTime: 'Mid-Morning',
+              lat: 38.8712,
+              lng: -104.8715,
+              rating: '4.9',
+              reviewCount: '4.7k',
+              image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80',
+              description: 'Winding walking trail through the colossal Gateway Rocks, Tower of Babel, and Cathedral Spires.',
+              tags: ['Footpath', 'Close-up Formations', 'Photography']
+            },
+            {
+              id: 'poi_co_16',
+              day: 5,
+              title: 'Manitou Springs Historic Center',
+              category: 'sight',
+              routeType: 'driving',
+              time: '12:30 PM',
+              duration: '2.0 hrs',
+              cost: 'Free',
+              bestTime: 'Lunch & Tasting',
+              lat: 38.8575,
+              lng: -104.9184,
+              rating: '4.7',
+              reviewCount: '3.4k',
+              image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
+              description: 'Quirky mountain artists town famous for historic public effervescent mineral water fountains and vintage penny arcades.',
+              tags: ['Natural Springs', 'Arcade', 'Local Bites']
+            },
+            {
+              id: 'poi_co_17',
+              day: 5,
+              title: 'Pikes Peak Summit',
+              category: 'sight',
+              routeType: 'driving',
+              time: '03:30 PM',
+              duration: '3.0 hrs',
+              cost: '$15 Toll / Cog',
+              bestTime: 'Clear afternoon',
+              lat: 38.8405,
+              lng: -105.0442,
+              rating: '4.9',
+              reviewCount: '9.8k',
+              image: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=600&q=80',
+              description: 'Iconic 14,115-foot "America the Beautiful" summit. Newly built visitor center offering high-altitude fresh donuts.',
+              tags: ['14er Summit', 'America the Beautiful', 'Panoramas']
+            }
+          ]
+        }
+      ]
+    };
+
+    let appData = loadAppData();
+    let currentDay = 1;
+    let activePoiId = null;
+    let isMapPickMode = false;
+    let map = null;
+    let markersLayerGroup = null;
+    let polylineLayerGroup = null;
+    let markerInstances = {};
+    let mapTileStyle = 'positron';
+    let tileLayerInstance = null;
+
+    // Cache of fetched route coordinates: key -> { coords: [[lat,lng], ...], distanceKm: number, durationMin: number, isRealRoute: boolean }
+    const routeGeometryCache = {};
+
+    function loadAppData() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.trips && parsed.trips.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('LocalStorage error:', e);
+      }
+      return DEFAULT_DATA;
+    }
+
+    function saveAppData() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+      } catch (e) {
+        console.error('Failed to save to localStorage', e);
+      }
+    }
+
+    function getCurrentTrip() {
+      return appData.trips.find(t => t.id === appData.activeTripId) || appData.trips[0];
+    }
+
+    function initMap() {
+      const trip = getCurrentTrip();
+      const initialCenter = trip.pois.length > 0 ? [trip.pois[0].lat, trip.pois[0].lng] : trip.center;
+
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView(initialCenter, trip.zoom || 12);
+
+      map.zoomControl.setPosition('bottomleft');
+      applyTileLayer();
+
+      polylineLayerGroup = L.layerGroup().addTo(map);
+      markersLayerGroup = L.layerGroup().addTo(map);
+
+      map.on('click', handleMapClick);
+    }
+
+    function applyTileLayer() {
+      if (tileLayerInstance) {
+        map.removeLayer(tileLayerInstance);
+      }
+      if (mapTileStyle === 'positron') {
+        tileLayerInstance = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd',
+          attribution: '&copy; CartoDB & OSM'
+        }).addTo(map);
+      } else {
+        tileLayerInstance = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+      }
+    }
+
+    function toggleMapTileTheme() {
+      mapTileStyle = mapTileStyle === 'positron' ? 'osm' : 'positron';
+      applyTileLayer();
+      showToast(mapTileStyle === 'positron' ? 'Voyager map theme' : 'Standard OSM theme');
+    }
+
+    const CATEGORY_CONFIG = {
+      sight: { label: 'Landmark', color: 'from-amber-500 to-orange-500', bg: 'bg-amber-500', text: 'text-amber-700', badgeBg: 'bg-amber-100', icon: '🏛️' },
+      food: { label: 'Food & Drink', color: 'from-rose-500 to-pink-500', bg: 'bg-rose-500', text: 'text-rose-700', badgeBg: 'bg-rose-100', icon: '🍽️' },
+      museum: { label: 'Culture & Art', color: 'from-purple-500 to-indigo-500', bg: 'bg-purple-500', text: 'text-purple-700', badgeBg: 'bg-purple-100', icon: '🎨' },
+      nature: { label: 'Nature & Trail', color: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-500', text: 'text-emerald-700', badgeBg: 'bg-emerald-100', icon: '🌿' },
+      shopping: { label: 'Shopping', color: 'from-blue-500 to-cyan-500', bg: 'bg-blue-500', text: 'text-blue-700', badgeBg: 'bg-blue-100', icon: '🛍️' },
+      hotel: { label: 'Stay', color: 'from-slate-600 to-slate-800', bg: 'bg-slate-700', text: 'text-slate-700', badgeBg: 'bg-slate-100', icon: '🏨' },
+    };
+
+    const ROUTE_TYPE_CONFIG = {
+      driving: {
+        label: 'Driving Route',
+        icon: '🚗',
+        badgeBg: 'bg-brand-100 text-brand-700 border-brand-200',
+        coreColor: '#4f46e5',
+        glowColor: '#818cf8',
+        weight: 4,
+        dashArray: null,
+      },
+      hiking: {
+        label: 'Hiking Trail',
+        icon: '🥾',
+        badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        coreColor: '#059669',
+        glowColor: '#34d399',
+        weight: 3.5,
+        dashArray: '6, 7',
+      },
+      straight: {
+        label: 'Direct Line',
+        icon: '📐',
+        badgeBg: 'bg-slate-100 text-slate-700 border-slate-200',
+        coreColor: '#94a3b8',
+        glowColor: '#cbd5e1',
+        weight: 2.5,
+        dashArray: '8, 8',
+      }
+    };
+
+    function createMarkerIcon(poi, index, isActive) {
+      const cfg = CATEGORY_CONFIG[poi.category] || CATEGORY_CONFIG.sight;
+      const ringAnimation = isActive ? '<span class="absolute -inset-2 rounded-full bg-brand-500 animate-pulse-ring pointer-events-none"></span>' : '';
+      const scaleClass = isActive ? 'scale-125 shadow-xl ring-4 ring-white' : 'hover:scale-110 shadow-md';
+      
+      const routeIconBadge = index > 0 && poi.routeType === 'hiking' 
+        ? '<span class="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-600 text-white text-[9px] rounded-full flex items-center justify-center shadow">🥾</span>'
+        : '';
+
+      const html = `
+        <div class="poi-pin relative flex items-center justify-center ${isActive ? 'active-pin' : ''}">
+          ${ringAnimation}
+          <div class="relative w-8 h-8 rounded-full bg-gradient-to-tr ${cfg.color} text-white font-bold flex items-center justify-center text-xs shadow-md border-2 border-white transition-all transform ${scaleClass}">
+            <span>${index + 1}</span>
+          </div>
+          ${routeIconBadge}
+          <div class="absolute -bottom-1 w-2 h-2 bg-slate-800 rotate-45 rounded-xs"></div>
+        </div>
+      `;
+
+      return L.divIcon({
+        className: 'custom-poi-marker',
+        html: html,
+        iconSize: [32, 36],
+        iconAnchor: [16, 36],
+        popupAnchor: [0, -36]
+      });
+    }
+
+    async function fetchRouteSegment(p1, p2, routeType) {
+      const mode = (routeType || 'driving').toLowerCase();
+      
+      // If user deliberately selected straight line or unclassified
+      if (mode === 'straight' || mode === 'unclassified') {
+        const distKm = (map.distance([p1.lat, p1.lng], [p2.lat, p2.lng]) / 1000).toFixed(1);
+        return {
+          coords: [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+          distanceKm: parseFloat(distKm),
+          durationMin: null,
+          mode: 'straight',
+          isFallback: false
+        };
+      }
+
+      // Check in-memory cache
+      const cacheKey = `${p1.lat.toFixed(5)},${p1.lng.toFixed(5)}_${p2.lat.toFixed(5)},${p2.lng.toFixed(5)}_${mode}`;
+      if (routeGeometryCache[cacheKey]) {
+        return routeGeometryCache[cacheKey];
+      }
+
+      // Prepare API URLs based on travel mode
+      let primaryUrl = '';
+      let secondaryUrl = '';
+
+      if (mode === 'hiking') {
+        // OpenStreetMap DE foot router handles actual walking/hiking trails
+        primaryUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson`;
+        // Secondary fallback to driving road if foot router returns empty or throttled
+        secondaryUrl = `https://router.project-osrm.org/route/v1/driving/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson`;
+      } else {
+        // Driving router follows roads & highways
+        primaryUrl = `https://router.project-osrm.org/route/v1/driving/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson`;
+        secondaryUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson`;
+      }
+
+      const fetchWithTimeout = async (url, timeoutMs = 4500) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timer);
+          return res;
+        } catch (err) {
+          clearTimeout(timer);
+          throw err;
+        }
+      };
+
+      try {
+        let res = null;
+        try {
+          res = await fetchWithTimeout(primaryUrl, 4000);
+        } catch (e1) {
+          // Try secondary URL
+          if (secondaryUrl) {
+            res = await fetchWithTimeout(secondaryUrl, 3500);
+          }
+        }
+
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data && data.routes && data.routes.length > 0) {
+            const r = data.routes[0];
+            // GeoJSON coordinates are [lng, lat], Leaflet polyline expects [lat, lng]
+            const polyCoords = r.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            const distanceKm = +(r.distance / 1000).toFixed(1);
+            const durationMin = Math.round(r.duration / 60);
+
+            const result = {
+              coords: polyCoords,
+              distanceKm: distanceKm,
+              durationMin: durationMin,
+              mode: mode,
+              isFallback: false
+            };
+            routeGeometryCache[cacheKey] = result;
+            return result;
+          }
+        }
+      } catch (err) {
+        // Network timeout, rate limit, or unreachable -> Graceful fallback to straight line
+        console.warn(`Routing API failed for leg from ${p1.title} to ${p2.title}. Falling back to straight line.`, err);
+      }
+
+      // Straight line fallback
+      const distDirect = +(map.distance([p1.lat, p1.lng], [p2.lat, p2.lng]) / 1000).toFixed(1);
+      const fallbackResult = {
+        coords: [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+        distanceKm: distDirect,
+        durationMin: null,
+        mode: mode,
+        isFallback: true
+      };
+      routeGeometryCache[cacheKey] = fallbackResult;
+      return fallbackResult;
+    }
+
+    async function renderMapElements() {
+      if (!map) return;
+      markersLayerGroup.clearLayers();
+      polylineLayerGroup.clearLayers();
+      markerInstances = {};
+
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+
+      if (dayPois.length === 0) {
+        updateRouteStats(0, 0, 'No stops planned');
+        return;
+      }
+
+      // Add interactive markers first
+      dayPois.forEach((poi, index) => {
+        const isActive = poi.id === activePoiId;
+        const icon = createMarkerIcon(poi, index, isActive);
+        const marker = L.marker([poi.lat, poi.lng], { icon: icon });
+
+        marker.on('click', () => {
+          handleSelectPoi(poi.id, { source: 'marker', openInsights: true });
+        });
+
+        markerInstances[poi.id] = marker;
+        markersLayerGroup.addLayer(marker);
+      });
+
+      if (dayPois.length <= 1) {
+        updateRouteStats(dayPois.length, 0, 'Single destination');
+        return;
+      }
+
+      // Fetch and draw actual road or trail paths between consecutive POIs
+      updateRouteStats(dayPois.length, null, 'Tracing road & trail paths...');
+      document.getElementById('routeStatusDot').className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+
+      let totalKm = 0;
+      let driveKm = 0;
+      let hikeKm = 0;
+      let directKm = 0;
+
+      // Parallelize leg requests
+      const legPromises = [];
+      for (let i = 0; i < dayPois.length - 1; i++) {
+        const p1 = dayPois[i];
+        const p2 = dayPois[i + 1];
+        const legMode = p2.routeType || 'driving';
+        legPromises.push(
+          fetchRouteSegment(p1, p2, legMode).then(seg => ({
+            from: p1,
+            to: p2,
+            seg: seg
+          }))
+        );
+      }
+
+      const results = await Promise.all(legPromises);
+
+      // Verify user hasn't switched day while fetching
+      const currentCheck = getCurrentTrip().pois.filter(p => p.day === currentDay);
+      if (currentCheck.length !== dayPois.length) return;
+
+      results.forEach(({ from, to, seg }) => {
+        const mode = seg.isFallback ? 'straight' : (seg.mode || 'driving');
+        const styleCfg = ROUTE_TYPE_CONFIG[mode] || ROUTE_TYPE_CONFIG.driving;
+
+        // Cumulative stats
+        const d = seg.distanceKm || 0;
+        totalKm += d;
+        if (mode === 'hiking') hikeKm += d;
+        else if (mode === 'driving') driveKm += d;
+        else directKm += d;
+
+        // Outer glow layer for aesthetic polish
+        const polyGlow = L.polyline(seg.coords, {
+          color: styleCfg.glowColor,
+          weight: styleCfg.weight + 3.5,
+          opacity: 0.35,
+          lineCap: 'round',
+          lineJoin: 'round'
+        });
+
+        // Core path line
+        const polyPath = L.polyline(seg.coords, {
+          color: styleCfg.coreColor,
+          weight: styleCfg.weight,
+          opacity: 0.9,
+          dashArray: styleCfg.dashArray,
+          lineCap: 'round',
+          lineJoin: 'round'
+        });
+
+        // Click on path displays leg info popup
+        const modeIcon = styleCfg.icon;
+        const modeTitle = styleCfg.label;
+        const timeLabel = seg.durationMin ? ` • ~${seg.durationMin} mins` : '';
+        const fallbackNote = seg.isFallback ? '<div class="text-[10px] text-amber-600 font-medium">⚠️ Straight line (unclassified / offline)</div>' : '';
+
+        const popupContent = `
+          <div class="font-sans">
+            <div class="flex items-center space-x-1.5 font-bold text-slate-800 mb-0.5">
+              <span>${modeIcon}</span>
+              <span>${modeTitle}</span>
+            </div>
+            <div class="text-[11px] text-slate-500 font-medium mb-1 truncate max-w-[200px]">
+              ${from.title} ➔ ${to.title}
+            </div>
+            <div class="text-xs font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 flex items-center justify-between">
+              <span>Distance</span>
+              <span>${seg.distanceKm} km${timeLabel}</span>
+            </div>
+            ${fallbackNote}
+          </div>
+        `;
+        polyPath.bindPopup(popupContent);
+
+        polylineLayerGroup.addLayer(polyGlow);
+        polylineLayerGroup.addLayer(polyPath);
+      });
+
+      document.getElementById('routeStatusDot').className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+      const breakdownText = `${dayPois.length} stops • ${totalKm.toFixed(1)} km total` + 
+        (hikeKm > 0 ? ` (🚗 ${driveKm.toFixed(1)}km, 🥾 ${hikeKm.toFixed(1)}km)` : '');
+      updateRouteStats(dayPois.length, totalKm.toFixed(1), breakdownText);
+    }
+
+    function updateRouteStats(count, km, customMsg = null) {
+      const statsBadge = document.getElementById('dayStatsText');
+      if (statsBadge) {
+        if (customMsg) {
+          statsBadge.textContent = customMsg;
+        } else {
+          statsBadge.textContent = `${count} ${count === 1 ? 'stop' : 'stops'} • ${km} km path`;
+        }
+      }
+    }
+
+    function handleSelectPoi(poiId, options = {}) {
+      const { source = 'card', openInsights = false } = options;
+      activePoiId = poiId;
+
+      const trip = getCurrentTrip();
+      const poi = trip.pois.find(p => p.id === poiId);
+      if (!poi) return;
+
+      // Re-render markers for active scale & pulse ring
+      renderActiveMarkerState();
+
+      // Smoothly fly map to coordinates
+      if (map) {
+        map.flyTo([poi.lat, poi.lng], 15, {
+          animate: true,
+          duration: source === 'card' ? 0.9 : 0.5
+        });
+      }
+
+      // Scroll card in bottom carousel
+      updateCardsActiveState(poiId);
+      const cardEl = document.getElementById(`card-${poiId}`);
+      if (cardEl) {
+        cardEl.scrollIntoView({
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest'
+        });
+      }
+
+      if (openInsights) {
+        openPoiInsightModal(poi);
+      }
+    }
+
+    function renderActiveMarkerState() {
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+
+      dayPois.forEach((poi, index) => {
+        const marker = markerInstances[poi.id];
+        if (marker) {
+          const isActive = poi.id === activePoiId;
+          marker.setIcon(createMarkerIcon(poi, index, isActive));
+        }
+      });
+    }
+
+    function updateCardsActiveState(currentActiveId) {
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+      const activeIdx = dayPois.findIndex(p => p.id === currentActiveId);
+
+      const counterEl = document.getElementById('carouselCounter');
+      if (counterEl && activeIdx !== -1) {
+        counterEl.textContent = `${activeIdx + 1} of ${dayPois.length}`;
+      }
+
+      dayPois.forEach(p => {
+        const cardEl = document.getElementById(`card-${p.id}`);
+        if (!cardEl) return;
+        const isActive = p.id === currentActiveId;
+
+        if (isActive) {
+          cardEl.classList.remove('border-white/20', 'bg-slate-900/80');
+          cardEl.classList.add('border-brand-500', 'bg-slate-900/95', 'ring-2', 'ring-brand-500/50', 'scale-[1.02]');
+        } else {
+          cardEl.classList.remove('border-brand-500', 'bg-slate-900/95', 'ring-2', 'ring-brand-500/50', 'scale-[1.02]');
+          cardEl.classList.add('border-white/20', 'bg-slate-900/80');
+        }
+      });
+    }
+
+    function renderCards() {
+      const container = document.getElementById('cardsScrollContainer');
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+
+      if (dayPois.length === 0) {
+        container.innerHTML = `
+          <div class="w-full py-6 text-center text-white/70 bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 px-4">
+            <p class="text-sm font-semibold mb-1">No POIs scheduled for Day ${currentDay}</p>
+            <p class="text-xs text-white/50 mb-3">Tap "+ Add POI" at the top to drop your first location.</p>
+            <button onclick="openAddPoiModal()" class="px-3 py-1.5 bg-brand-600 rounded-full text-xs font-bold text-white shadow-md">
+              + Add Place to Day ${currentDay}
+            </button>
+          </div>
+        `;
+        document.getElementById('carouselCounter').textContent = '0 of 0';
+        return;
+      }
+
+      if (!activePoiId || !dayPois.some(p => p.id === activePoiId)) {
+        activePoiId = dayPois[0].id;
+      }
+
+      container.innerHTML = dayPois.map((poi, idx) => {
+        const isActive = poi.id === activePoiId;
+        const cfg = CATEGORY_CONFIG[poi.category] || CATEGORY_CONFIG.sight;
+        const routeMode = poi.routeType || 'driving';
+        const routeCfg = ROUTE_TYPE_CONFIG[routeMode] || ROUTE_TYPE_CONFIG.driving;
+
+        // Travel mode chip between stops
+        const routeBadgeHtml = idx > 0 ? `
+          <span class="text-[9px] font-bold px-1.5 py-0.5 rounded ${routeMode === 'hiking' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60' : routeMode === 'straight' ? 'bg-slate-800 text-slate-300' : 'bg-brand-950/80 text-brand-300 border border-brand-800/60'}">
+            ${routeCfg.icon} ${routeMode === 'hiking' ? 'Trail' : routeMode === 'straight' ? 'Direct' : 'Drive'}
+          </span>
+        ` : '';
+
+        return `
+          <div id="card-${poi.id}" 
+               onclick="handleSelectPoi('${poi.id}', { source: 'card', openInsights: false })"
+               class="flex-shrink-0 w-64 snap-center cursor-pointer backdrop-blur-md rounded-2xl p-3 border transition-all duration-300 shadow-xl ${
+                 isActive 
+                   ? 'border-brand-500 bg-slate-900/95 ring-2 ring-brand-500/50 scale-[1.02]' 
+                   : 'border-white/20 bg-slate-900/80 hover:border-white/40'
+               }">
+            <div class="flex items-start justify-between gap-2 mb-1.5">
+              <div class="flex items-center space-x-2">
+                <span class="w-6 h-6 rounded-full bg-gradient-to-tr ${cfg.color} text-white font-bold text-xs flex items-center justify-center shadow">
+                  ${idx + 1}
+                </span>
+                <div>
+                  <h3 class="font-heading font-bold text-sm text-white leading-tight truncate max-w-[125px]">${poi.title}</h3>
+                  <div class="flex items-center space-x-1.5 mt-0.5">
+                    <span class="text-[10px] text-white/60 font-medium">${cfg.label}</span>
+                    ${routeBadgeHtml}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quick Time Tag -->
+              <span class="text-[10px] font-semibold text-brand-300 bg-brand-950/60 px-2 py-0.5 rounded-full border border-brand-800/60 flex-shrink-0">
+                ${poi.time}
+              </span>
+            </div>
+
+            <!-- Notes preview -->
+            <p class="text-[11px] text-slate-300 line-clamp-1 mb-2">
+              ${poi.description || 'Tap to review detailed insights and navigate.'}
+            </p>
+
+            <div class="flex items-center justify-between pt-1 border-t border-white/10 text-[11px]">
+              <span class="text-white/70 font-medium flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                <span>${poi.rating || '4.8'}</span>
+                <span class="text-white/40 ml-1">• ${poi.duration}</span>
+              </span>
+
+              <button onclick="event.stopPropagation(); handleSelectPoi('${poi.id}', { source: 'card', openInsights: true })" 
+                      class="text-xs font-bold text-brand-400 hover:text-brand-300 flex items-center space-x-0.5 active:scale-95 transition">
+                <span>Insights</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      updateCardsActiveState(activePoiId);
+    }
+
+    function renderDaysTabs() {
+      const trip = getCurrentTrip();
+      const container = document.getElementById('daysTabContainer');
+      
+      let html = '';
+      for (let d = 1; d <= trip.totalDays; d++) {
+        const isActive = d === currentDay;
+        const count = trip.pois.filter(p => p.day === d).length;
+        html += `
+          <button onclick="switchDay(${d})" 
+                  class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200 flex items-center space-x-1.5 ${
+                    isActive 
+                      ? 'bg-slate-900 text-white shadow-md' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }">
+            <span>Day ${d}</span>
+            <span class="w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${isActive ? 'bg-brand-500 text-white' : 'bg-slate-300 text-slate-700'}">
+              ${count}
+            </span>
+          </button>
+        `;
+      }
+
+      container.innerHTML = html;
+      document.getElementById('tripTitleDisplay').textContent = trip.title;
+      document.getElementById('tripDatesDisplay').textContent = `${trip.dates} • ${trip.totalDays} Days`;
+    }
+
+    function switchDay(dayNum) {
+      currentDay = dayNum;
+      activePoiId = null;
+      renderDaysTabs();
+      renderCards();
+      renderMapElements();
+      fitMapToCurrentDayBounds();
+    }
+
+    function fitMapToCurrentDayBounds() {
+      if (!map) return;
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+
+      if (dayPois.length === 0) {
+        if (trip.pois.length > 0) {
+          map.panTo([trip.pois[0].lat, trip.pois[0].lng]);
+        }
+        return;
+      }
+
+      if (dayPois.length === 1) {
+        map.flyTo([dayPois[0].lat, dayPois[0].lng], 14);
+        return;
+      }
+
+      const bounds = L.latLngBounds(dayPois.map(p => [p.lat, p.lng]));
+      map.fitBounds(bounds, {
+        padding: [60, 60],
+        maxZoom: 15,
+        animate: true
+      });
+    }
+
+    let currentInsightPoiId = null;
+
+    function openPoiInsightModal(poi) {
+      currentInsightPoiId = poi.id;
+      const modal = document.getElementById('poiInsightModal');
+      const sheet = document.getElementById('poiInsightSheet');
+      const cfg = CATEGORY_CONFIG[poi.category] || CATEGORY_CONFIG.sight;
+
+      const trip = getCurrentTrip();
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+      const poiIndex = dayPois.findIndex(p => p.id === poi.id);
+
+      document.getElementById('insightTitle').textContent = poi.title;
+      document.getElementById('insightCategoryBadge').textContent = `${cfg.icon} ${cfg.label}`;
+      document.getElementById('insightCategoryBadge').className = `text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${cfg.badgeBg} ${cfg.text}`;
+      
+      document.getElementById('insightTime').textContent = poi.time || 'Flexible';
+      document.getElementById('insightDayLabel').textContent = `Day ${poi.day} • Stop #${poiIndex + 1}`;
+      document.getElementById('insightRating').innerHTML = `★ ${poi.rating || '4.8'} <span class="text-white/80 font-normal ml-1">(${poi.reviewCount || '1.2k'} reviews)</span>`;
+      
+      document.getElementById('insightDuration').textContent = poi.duration || '1.5 hrs';
+      document.getElementById('insightCost').textContent = poi.cost || 'Free';
+      document.getElementById('insightBestTime').textContent = poi.bestTime || 'Morning';
+      document.getElementById('insightDescription').textContent = poi.description || 'No detailed description added yet.';
+      document.getElementById('insightImage').src = poi.image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=600&q=80';
+
+      // Update Leg Info Box
+      updateInsightLegDisplay(poi, poiIndex);
+
+      // Render Tags
+      const tagsContainer = document.getElementById('insightTagsContainer');
+      const tags = poi.tags || ['Explorer Pick', 'Verified'];
+      tagsContainer.innerHTML = tags.map(t => `
+        <span class="text-[10px] font-medium bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md border border-slate-200">
+          #${t}
+        </span>
+      `).join('');
+
+      // Setup Focus button
+      const navBtn = document.getElementById('insightNavigateBtn');
+      navBtn.onclick = () => {
+        closePoiInsightModal();
+        handleSelectPoi(poi.id, { source: 'card' });
+      };
+
+      // Setup Delete button
+      const delBtn = document.getElementById('insightDeleteBtn');
+      delBtn.onclick = () => {
+        deletePoi(poi.id);
+      };
+
+      // Animate In
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      sheet.classList.remove('translate-y-full');
+    }
+
+    function updateInsightLegDisplay(poi, poiIndex) {
+      const mode = poi.routeType || 'driving';
+      const rCfg = ROUTE_TYPE_CONFIG[mode] || ROUTE_TYPE_CONFIG.driving;
+      const badge = document.getElementById('insightRouteModeBadge');
+      badge.className = `text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center space-x-1 cursor-pointer hover:opacity-80 transition border ${rCfg.badgeBg}`;
+      badge.innerHTML = `<span>${rCfg.icon}</span><span>${rCfg.label}</span>`;
+
+      const legCard = document.getElementById('insightLegInfoCard');
+      const legIcon = document.getElementById('insightLegIcon');
+      const legTitle = document.getElementById('insightLegTitle');
+      const legDesc = document.getElementById('insightLegDesc');
+
+      if (poiIndex === 0) {
+        legTitle.textContent = 'Starting Location for Day ' + poi.day;
+        legDesc.textContent = 'Day departure anchor';
+        legIcon.textContent = '🚩';
+        legIcon.className = 'w-8 h-8 rounded-lg flex items-center justify-center text-base bg-amber-100 text-amber-700';
+      } else {
+        legTitle.textContent = `${rCfg.label} from previous stop`;
+        legDesc.textContent = mode === 'hiking' 
+          ? 'Tracing real footpaths and hiking trails' 
+          : mode === 'straight' 
+          ? 'Direct straight line fallback' 
+          : 'Following road network and highways';
+        legIcon.textContent = rCfg.icon;
+        legIcon.className = `w-8 h-8 rounded-lg flex items-center justify-center text-base ${mode === 'hiking' ? 'bg-emerald-100 text-emerald-800' : mode === 'straight' ? 'bg-slate-200 text-slate-700' : 'bg-brand-100 text-brand-700'}`;
+      }
+    }
+
+    function cycleActivePoiRouteMode() {
+      if (!currentInsightPoiId) return;
+      const trip = getCurrentTrip();
+      const poi = trip.pois.find(p => p.id === currentInsightPoiId);
+      if (!poi) return;
+
+      const modes = ['driving', 'hiking', 'straight'];
+      const curIdx = modes.indexOf(poi.routeType || 'driving');
+      const nextMode = modes[(curIdx + 1) % modes.length];
+      poi.routeType = nextMode;
+
+      saveAppData();
+
+      const dayPois = trip.pois.filter(p => p.day === currentDay);
+      const poiIndex = dayPois.findIndex(p => p.id === poi.id);
+      updateInsightLegDisplay(poi, poiIndex);
+
+      renderCards();
+      renderMapElements();
+      showToast(`Switched route to ${ROUTE_TYPE_CONFIG[nextMode].label}`, ROUTE_TYPE_CONFIG[nextMode].icon);
+    }
+
+    function closePoiInsightModal() {
+      const modal = document.getElementById('poiInsightModal');
+      const sheet = document.getElementById('poiInsightSheet');
+      sheet.classList.add('translate-y-full');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      currentInsightPoiId = null;
+    }
+
+    function deletePoi(poiId) {
+      const trip = getCurrentTrip();
+      trip.pois = trip.pois.filter(p => p.id !== poiId);
+      saveAppData();
+      closePoiInsightModal();
+      renderMapElements();
+      renderCards();
+      renderDaysTabs();
+      showToast('Place removed from itinerary');
+    }
+
+    function openAddPoiModal() {
+      const trip = getCurrentTrip();
+      const modal = document.getElementById('poiModal');
+      const form = document.getElementById('poiForm');
+      form.reset();
+
+      // Populate day select
+      const daySelect = document.getElementById('poiDaySelect');
+      let options = '';
+      for (let i = 1; i <= trip.totalDays; i++) {
+        options += `<option value="${i}" ${i === currentDay ? 'selected' : ''}>Day ${i}</option>`;
+      }
+      daySelect.innerHTML = options;
+
+      const center = map ? map.getCenter() : { lat: 39.7392, lng: -104.9903 };
+      document.getElementById('poiLatInput').value = center.lat.toFixed(5);
+      document.getElementById('poiLngInput').value = center.lng.toFixed(5);
+
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-95');
+    }
+
+    function closeAddPoiModal() {
+      const modal = document.getElementById('poiModal');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.add('scale-95');
+      cancelMapPickMode();
+    }
+
+    function enableMapPickMode() {
+      isMapPickMode = true;
+      closeAddPoiModal();
+      document.getElementById('mapPickerNotification').classList.remove('-translate-y-28');
+      showToast('Click anywhere on the map to place coordinate');
+    }
+
+    function cancelMapPickMode() {
+      isMapPickMode = false;
+      document.getElementById('mapPickerNotification').classList.add('-translate-y-28');
+    }
+
+    function handleMapClick(e) {
+      if (isMapPickMode) {
+        cancelMapPickMode();
+        openAddPoiModal();
+        document.getElementById('poiLatInput').value = e.latlng.lat.toFixed(5);
+        document.getElementById('poiLngInput').value = e.latlng.lng.toFixed(5);
+        showToast('Location pinned from map!');
+      }
+    }
+
+    function handleSavePoi(e) {
+      e.preventDefault();
+      const trip = getCurrentTrip();
+      const title = document.getElementById('poiNameInput').value.trim();
+      const day = parseInt(document.getElementById('poiDaySelect').value, 10);
+      const category = document.getElementById('poiCategorySelect').value;
+      const routeType = document.getElementById('poiRouteModeSelect').value || 'driving';
+      const time = document.getElementById('poiTimeInput').value || '12:00 PM';
+      const duration = document.getElementById('poiDurationInput').value.trim() || '1 hr';
+      const lat = parseFloat(document.getElementById('poiLatInput').value);
+      const lng = parseFloat(document.getElementById('poiLngInput').value);
+      const notes = document.getElementById('poiNotesInput').value.trim();
+
+      const newPoi = {
+        id: 'poi_' + Date.now(),
+        day: day,
+        title: title,
+        category: category,
+        routeType: routeType,
+        time: time,
+        duration: duration,
+        cost: 'Free',
+        bestTime: 'Anytime',
+        lat: lat,
+        lng: lng,
+        rating: '4.8',
+        reviewCount: 'New',
+        image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=600&q=80',
+        description: notes || `Planned visit during Day ${day} itinerary.`,
+        tags: ['Custom Stop', routeType === 'hiking' ? 'Trail' : 'Planned']
+      };
+
+      trip.pois.push(newPoi);
+      saveAppData();
+      closeAddPoiModal();
+
+      currentDay = day;
+      activePoiId = newPoi.id;
+      renderDaysTabs();
+      renderCards();
+      renderMapElements();
+      handleSelectPoi(newPoi.id, { source: 'card', openInsights: true });
+      showToast(`Added "${title}" to Day ${day}`, routeType === 'hiking' ? '🥾' : '🚗');
+    }
+
+    function openTripSelectorModal() {
+      const modal = document.getElementById('tripModal');
+      const list = document.getElementById('tripListContainer');
+
+      list.innerHTML = appData.trips.map(trip => {
+        const isCurrent = trip.id === appData.activeTripId;
+        return `
+          <div onclick="selectTrip('${trip.id}')" 
+               class="p-3 rounded-2xl border cursor-pointer flex items-center justify-between transition ${
+                 isCurrent 
+                   ? 'border-brand-500 bg-brand-50/70 shadow-sm' 
+                   : 'border-slate-200 hover:bg-slate-50'
+               }">
+            <div>
+              <h4 class="font-bold text-sm text-slate-800">${trip.title}</h4>
+              <p class="text-xs text-slate-500">${trip.dates} • ${trip.pois.length} stops</p>
+            </div>
+            ${isCurrent ? '<span class="text-brand-600 font-bold text-xs bg-brand-100 px-2 py-0.5 rounded-md">Active</span>' : ''}
+          </div>
+        `;
+      }).join('');
+
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-95');
+    }
+
+    function closeTripSelectorModal() {
+      const modal = document.getElementById('tripModal');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.add('scale-95');
+    }
+
+    function selectTrip(tripId) {
+      appData.activeTripId = tripId;
+      saveAppData();
+      currentDay = 1;
+      activePoiId = null;
+      closeTripSelectorModal();
+      renderDaysTabs();
+      renderCards();
+      renderMapElements();
+      fitMapToCurrentDayBounds();
+      showToast('Trip loaded!');
+    }
+
+    function handleCreateNewTrip(e) {
+      e.preventDefault();
+      const title = document.getElementById('newTripName').value.trim();
+      const dates = document.getElementById('newTripDates').value.trim();
+      const days = parseInt(document.getElementById('newTripDays').value, 10) || 3;
+
+      const newTrip = {
+        id: 'trip_' + Date.now(),
+        title: title,
+        destination: title,
+        dates: dates,
+        totalDays: days,
+        center: [39.7392, -104.9903],
+        zoom: 12,
+        pois: []
+      };
+
+      appData.trips.push(newTrip);
+      appData.activeTripId = newTrip.id;
+      saveAppData();
+      closeTripSelectorModal();
+      renderDaysTabs();
+      renderCards();
+      renderMapElements();
+      showToast(`Created trip: ${title}`);
+    }
+
+    let toastTimeout = null;
+    function showToast(msg, icon = '✨') {
+      const toast = document.getElementById('appToast');
+      document.getElementById('toastMessage').textContent = msg;
+      document.getElementById('toastIcon').textContent = icon;
+      
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2400);
+    }
+
+    function setupPwaManifestAndWorker() {
+      const manifest = {
+        name: "TripFlow - Smart Travel & Trail Planner",
+        short_name: "TripFlow",
+        start_url: "./",
+        display: "standalone",
+        background_color: "#020617",
+        theme_color: "#4f46e5",
+        icons: [
+          {
+            src: "https://placehold.co/192x192/4f46e5/ffffff?text=TF",
+            sizes: "192x192",
+            type: "image/png"
+          },
+          {
+            src: "https://placehold.co/512x512/4f46e5/ffffff?text=TripFlow",
+            sizes: "512x512",
+            type: "image/png"
+          }
+        ]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestUrl;
+      document.head.appendChild(manifestLink);
+
+      if ('serviceWorker' in navigator) {
+        const swScript = `
+          self.addEventListener('install', e => self.skipWaiting());
+          self.addEventListener('activate', e => self.clients.claim());
+          self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
+        `;
+        const swBlob = new Blob([swScript], { type: 'text/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setupPwaManifestAndWorker();
+      initMap();
+      renderDaysTabs();
+      renderCards();
+      renderMapElements();
+
+      setTimeout(() => {
+        const hint = document.getElementById('interactionHint');
+        if (hint) {
+          hint.classList.add('opacity-0');
+        }
+      }, 4500);
+
+      setTimeout(() => {
+        fitMapToCurrentDayBounds();
+      }, 450);
+    });
+  </script>
+</body>
+</html>
